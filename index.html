@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学生成绩查询系统</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: Arial, sans-serif; }
+        body { padding: 20px; max-width: 1200px; margin: 0 auto; }
+        header { margin-bottom: 30px; text-align: center; }
+        #user-info { text-align: right; margin-bottom: 20px; padding: 10px; background: #f5f5f5; border-radius: 4px; }
+        #auth-area { max-width: 400px; margin: 50px auto; padding: 30px; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        #new-password-area { max-width: 400px; margin: 50px auto; padding: 30px; border: 1px solid #eee; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); display: none; }
+        .section { margin: 30px 0; padding: 20px; border: 1px solid #eee; border-radius: 8px; }
+        .hidden { display: none; }
+        input { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; }
+        button { padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; margin-top: 10px; }
+        button:hover { background: #0056b3; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #f9f9f9; }
+        .form-group { margin: 15px 0; }
+        label { display: block; margin-bottom: 5px; font-weight: 500; }
+        .debug-info { margin: 10px 0; padding: 10px; background: #f0f8ff; border-radius: 4px; font-size: 12px; color: #333; }
+        .status-message { margin: 10px 0; padding: 10px; border-radius: 4px; color: #666; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        button.danger { background: #dc3545; }
+        button.danger:hover { background: #c82333; }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: none; justify-content: center; align-items: center; }
+        .modal-content { background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 500px; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .close { float: right; font-size: 28px; cursor: pointer; }
+        .form-section, .list-section { margin: 20px 0; padding: 20px; border: 1px solid #eee; border-radius: 8px; }
+        .extend-fields { margin: 10px 0; padding: 10px; background-color: #f9f9f9; }
+        input, select, button { margin: 5px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        button { background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+        button:hover { background-color: #45a049; }
+        .status { margin: 10px 0; padding: 8px; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #f2f2f2; }
+        .modal-close { cursor: pointer; font-size: 20px; }
+    </style>
+    <!-- 依赖库 -->
+    <script src="https://cdn.bootcdn.net/ajax/libs/amazon-cognito-identity-js/6.3.6/amazon-cognito-identity.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6.3.6/dist/amazon-cognito-identity.min.js"></script>
+    <script>if (!window.AmazonCognitoIdentity) document.write('<script src="https://cdn.jsdelivr.net/npm/amazon-cognito-identity-js@6.3.6/dist/amazon-cognito-identity.min.js"><\/script>');</script>
+</head>
+<body>
+<header><h1>学生成绩查询系统</h1></header>
+<div id="user-info"></div>
+<div id="debug" class="debug-info hidden"></div>
+
+<!-- 登录区域 -->
+<div id="auth-area">
+    <h2>请登录</h2>
+    <input type="text" id="username" placeholder="用户名" />
+    <input type="password" id="password" placeholder="密码" />
+    <button onclick="signIn()">使用账号登录</button>
+</div>
+
+<!-- 密码重置区域 -->
+<div id="new-password-area">
+    <h2>请设置新密码</h2>
+    <p>系统要求您更新密码并完善信息后才能继续使用</p>
+    <input type="email" id="required-email" placeholder="请输入您的邮箱" />
+    <input type="password" id="new-password" placeholder="新密码（至少8位，包含大小写字母和数字）" />
+    <input type="password" id="confirm-password" placeholder="确认新密码" />
+    <button onclick="submitNewPassword()">确认设置</button>
+    <button onclick="cancelNewPassword()">取消</button>
+</div>
+
+<!-- 学生页面 -->
+<div id="student-page" class="hidden section">
+    <h2>我的成绩查询</h2>
+    <div id="grade-message" class="status-message"></div>
+    <table>
+        <thead>
+        <tr>
+            <th>课程</th>
+            <th>分数</th>
+            <th>学期</th>
+            <th>最后更新时间</th>
+        </tr>
+        </thead>
+        <tbody id="student-grade-list"></tbody>
+    </table>
+</div>
+
+<!-- 教师页面 -->
+<div id="teacher-page" class="hidden section">
+    <h2>教师管理中心</h2>
+    <div class="status-message" id="teacher-status">加载教师功能中...</div>
+
+    <!-- 单条成绩录入 -->
+    <div class="section" id="single-grade-section">
+        <h3>单条成绩录入</h3>
+        <div class="form-group">
+            <label>学号</label>
+            <input type="text" id="studentId" placeholder="输入学生学号"> <!-- ID必须是studentId -->
+        </div>
+        <div class="form-group">
+            <label>课程</label>
+            <input type="text" id="course" placeholder="输入课程名称"> <!-- ID必须是course -->
+        </div>
+        <div class="form-group">
+            <label>分数</label>
+            <input type="number" id="score" placeholder="输入分数" min="0" max="100" step="1"> <!-- step="1" 限制为整数 -->
+        </div>
+        <div class="form-group">
+            <label>学期</label>
+            <input type="text" id="semester" placeholder="如：2023-2024学年第一学期"> <!-- ID必须是semester -->
+        </div>
+        <button onclick="addSingleGrade()">提交成绩</button>
+        <div id="add-grade-status" class="status-message"></div>
+    </div>
+
+
+    <!-- 批量导入区域 -->
+    <div class="section" id="batch-import-section">
+        <h3>批量成绩导入（Excel/CSV）</h3>
+        <p>支持格式：.xlsx、.xls、.csv（表头需包含：studentId, course, score, semester）</p>
+        <input type="file" id="grade-file" accept=".xlsx,.xls,.csv" />
+        <button onclick="uploadGradeFile()">上传并导入</button>
+        <div id="import-status" class="status-message"></div>
+    </div>
+
+    <div class="section" id="query-time-section">
+        <h3>设置学生查询时间段</h3>
+        <div class="form-group">
+            <label>配置键（默认：globalQueryTime）</label>
+            <input type="text" id="configKey" placeholder="globalQueryTime" value="globalQueryTime">
+        </div>
+        <div class="form-group">
+            <label>查询开始时间</label>
+            <input type="datetime-local" id="queryStartTime">
+        </div>
+        <div class="form-group">
+            <label>查询结束时间</label>
+            <input type="datetime-local" id="queryEndTime">
+        </div>
+        <button onclick="setQueryTime()">保存设置</button>
+        <div id="query-time-status" class="status-message"></div>
+    </div>
+
+
+    <!-- 成绩管理（修改/删除）区域 -->
+    <div class="section" id="grade-management-section">
+        <h3>成绩管理（修改/删除）</h3>
+        <div class="form-group">
+            <label>查询条件：学号</label>
+            <input type="text" id="query-studentId" placeholder="输入学号查询该学生所有成绩">
+        </div>
+        <button onclick="queryGradesForManagement()">查询成绩</button>
+        <div id="query-grade-status" class="status-message"></div>
+
+        <!-- 成绩列表（带操作按钮） -->
+        <table id="manage-grade-table">
+            <thead>
+            <tr>
+                <th>学号</th>
+                <th>课程</th>
+                <th>分数</th>
+                <th>学期</th>
+                <th>操作</th>
+            </tr>
+            </thead>
+            <tbody id="manage-grade-list"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 修改成绩弹窗 -->
+<div class="modal" id="edit-grade-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>修改成绩</h3>
+            <span class="modal-close" onclick="closeEditModal()">&times;</span>
+        </div>
+        <input type="hidden" id="edit-grade-id"> <!-- 存储成绩记录ID -->
+        <div class="form-group">
+            <label>学号（不可修改）</label>
+            <input type="text" id="edit-studentId" disabled>
+        </div>
+        <div class="form-group">
+            <label>课程（不可修改）</label>
+            <input type="text" id="edit-course" disabled>
+        </div>
+        <div class="form-group">
+            <label>学期（不可修改）</label>
+            <input type="text" id="edit-semester" disabled>
+        </div>
+        <div class="form-group">
+            <label>新分数</label>
+            <input type="number" id="edit-score" min="0" max="100" step="1" placeholder="输入新分数">
+        </div>
+        <button onclick="submitEditGrade()">保存修改</button>
+        <button class="danger" onclick="closeEditModal()">取消</button>
+        <div id="edit-grade-status" class="status-message"></div>
+    </div>
+</div>
+
+<!-- 删除确认弹窗 -->
+<div class="modal" id="delete-confirm-modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>确认删除</h3>
+            <span class="modal-close" onclick="closeDeleteModal()">&times;</span>
+        </div>
+        <input type="hidden" id="delete-grade-id"> <!-- 存储要删除的成绩ID -->
+        <p id="delete-confirm-text">确定要删除该成绩记录吗？此操作不可撤销！</p>
+        <button class="danger" onclick="submitDeleteGrade()">确认删除</button>
+        <button onclick="closeDeleteModal()">取消</button>
+    </div>
+</div>
+
+<!-- 管理员页面-->
+<div id="admin-page" class="hidden section">
+    <h2>管理员管理中心</h2>
+    <div class="status-message" id="admin-status">加载管理员功能中...</div>
+
+    <!-- 新增用户区域 -->
+    <div class="section" id="add-user-section">
+        <h3>新增用户</h3>
+        <div class="form-group">
+            <label>用户类型</label>
+            <select id="add-user-type" required>
+                <option value="">选择用户类型</option>
+                <option value="student">学生</option>
+                <option value="teacher">教师</option>
+                <option value="admin">管理员</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>用户ID（唯一标识）</label>
+            <input type="text" id="add-user-id" placeholder="输入用户ID（如学号、工号）" required>
+        </div>
+        <div class="form-group">
+            <label>用户名（Cognito登录用）</label>
+            <input type="text" id="add-username" placeholder="输入登录用户名" required>
+        </div>
+        <div class="form-group">
+            <label>初始密码（至少8位，含大小写字母和数字）</label>
+            <input type="password" id="add-password" placeholder="输入初始密码" required>
+        </div>
+        <div class="form-group">
+            <label>邮箱</label>
+            <input type="email" id="add-email" placeholder="输入用户邮箱" required>
+        </div>
+
+        <!-- 学生扩展字段 -->
+        <div class="form-group extend-fields" id="add-student-extend" style="display: none;">
+            <label>年级</label>
+            <input type="text" id="add-grade" placeholder="输入学生年级（如：2023级）">
+        </div>
+        <!-- 教师扩展字段（补充缺失的教师扩展字段容器） -->
+        <div class="form-group extend-fields" id="add-teacher-extend" style="display: none;">
+            <label>授课科目</label>
+            <input type="text" id="add-subject" placeholder="输入教师授课科目（如：数学）">
+        </div>
+        <!-- 管理员扩展字段 -->
+        <div class="form-group extend-fields" id="add-admin-extend" style="display: none;">
+            <label>权限等级</label>
+            <select id="add-permission">
+                <option value="full">全部权限</option>
+                <option value="limited">有限权限（仅查看）</option>
+            </select>
+        </div>
+
+        <button onclick="addUser()">创建用户</button>
+        <div id="add-user-status" class="status-message"></div>
+    </div>
+
+    <!-- 用户管理列表区域 -->
+    <div class="section" id="user-management-section">
+        <h3>用户管理（修改/删除）</h3>
+        <div class="form-group">
+            <label>筛选用户类型            <select id="filter-user-type" onchange="loadUserList()">
+                <option value="all">所有用户类型</option>
+                <option value="student">学生</option>
+                <option value="teacher">教师</option>
+                <option value="admin">管理员</option>
+            </select>
+        </div>
+        <button onclick="loadUserList()">刷新用户列表</button>
+        <div id="load-user-status" class="status-message"></div>
+
+        <table id="user-list-table">
+            <thead>
+            <tr>
+                <th>用户ID</th>
+                <th>用户名</th>
+                <th>邮箱</th>
+                <th>用户类型</th>
+                <th>创建时间</th>
+                <th>操作</th>
+            </tr>
+            </thead>
+            <tbody id="user-list-body">
+            <!-- 动态加载用户数据 -->
+            </tbody>
+        </table>
+    </div>
+
+    <!-- 修改用户弹窗 -->
+    <div class="modal" id="edit-user-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>修改用户信息</h3>
+                <span class="modal-close" onclick="closeEditUserModal()">&times;</span>
+            </div>
+            <input type="hidden" id="edit-user-id"> <!-- 存储待修改用户ID -->
+            <input type="hidden" id="edit-user-type"> <!-- 存储待修改用户类型 -->
+
+            <div class="form-group">
+                <label>用户名</label>
+                <input type="text" id="edit-username" placeholder="输入用户名">
+            </div>
+            <div class="form-group">
+                <label>邮箱</label>
+                <input type="email" id="edit-email" placeholder="输入邮箱">
+            </div>
+            <div class="form-group">
+                <label>新密码（不填则不修改，至少8位）</label>
+                <input type="password" id="edit-password" placeholder="输入新密码">
+            </div>
+
+            <!-- 学生扩展字段 -->
+            <div class="form-group extend-fields" id="edit-student-extend" style="display: none;">
+                <label>年级</label>
+                <input type="text" id="edit-grade" placeholder="输入学生年级">
+            </div>
+            <!-- 教师扩展字段（补充缺失的教师扩展字段容器） -->
+            <div class="form-group extend-fields" id="edit-teacher-extend" style="display: none;">
+                <label>授课科目</label>
+                <input type="text" id="edit-subject" placeholder="输入教师授课科目">
+            </div>
+            <!-- 管理员扩展字段 -->
+            <div class="form-group extend-fields" id="edit-admin-extend" style="display: none;">
+                <label>权限等级</label>
+                <select id="edit-permission">
+                    <option value="full">全部权限</option>
+                    <option value="limited">有限权限（仅查看）</option>
+                </select>
+            </div>
+
+            <button onclick="submitEditUser()">保存修改</button>
+            <button class="danger" onclick="closeEditUserModal()">取消</button>
+            <div id="edit-user-status" class="status-message"></div>
+        </div>
+    </div>
+
+    <!-- 删除用户确认弹窗 -->
+    <div class="modal" id="delete-user-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>确认删除</h3>
+                <span class="modal-close" onclick="closeDeleteUserModal()">&times;</span>
+            </div>
+            <input type="hidden" id="delete-user-id"> <!-- 存储待删除用户ID -->
+            <input type="hidden" id="delete-user-type"> <!-- 存储待删除用户类型 -->
+            <p id="delete-user-text">确定要删除该用户吗？此操作将同步删除Cognito账号和关联数据，不可撤销！</p>
+            <button class="danger" onclick="submitDeleteUser()">确认删除</button>
+            <button onclick="closeDeleteUserModal()">取消</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 核心配置
+    const API_BASE_URL = "https://i5habz4xth.execute-api.us-east-2.amazonaws.com/dev";
+    const COGNITO_CONFIG = {
+        UserPoolId: "us-east-2_xp9yoCFyi",
+        ClientId: "41gjucjj9jj0jj6rtfjaf8cefr",
+        RedirectUriSignIn: "http://grade111.s3-website.us-east-2.amazonaws.com/index.html",
+        RedirectUriSignOut: "http://grade111.s3-website.us-east-2.amazonaws.com/index.html"
+    };
+
+    // 全局变量
+    let userPool = null;
+    let cognitoUser = null;
+    let requiredAttributes = [];
+    // 弹窗DOM初始化
+    const editModal = document.getElementById("edit-grade-modal");
+    const deleteModal = document.getElementById("delete-confirm-modal");
+    // 管理员页面专用变量
+    const editUserModal = document.getElementById("edit-user-modal");
+    const deleteUserModal = document.getElementById("delete-user-modal");
+
+    // 合并后的页面加载初始化（核心修复：仅保留一个window.onload）
+    window.onload = function() {
+        if (!window.AmazonCognitoIdentity) {
+            alert("Cognito SDK加载失败，请刷新页面！");
+            return;
+        }
+
+        // 1. 初始化Cognito UserPool（登录核心）
+        userPool = new AmazonCognitoIdentity.CognitoUserPool({
+            UserPoolId: COGNITO_CONFIG.UserPoolId,
+            ClientId: COGNITO_CONFIG.ClientId
+        });
+
+        // 2. 加载查询时间（添加错误捕获，避免阻塞页面）
+        loadQueryTime().catch(err => {
+            console.error("加载查询时间失败（不影响核心功能）：", err);
+        });
+
+        // 3. 检查登录状态
+        checkLoginStatus();
+
+        // 4. 管理员页面专用：监听用户类型选择，显示对应扩展字段
+        if (document.getElementById("admin-page")) {
+            document.getElementById('add-user-type').addEventListener('change', showAddUserExtendFields);
+        }
+    };
+
+    // 登录函数
+    function signIn() {
+        const username = document.getElementById("username").value.trim();
+        const password = document.getElementById("password").value.trim();
+
+        if (!username || !password) {
+            alert("请输入用户名和密码！");
+            return;
+        }
+
+        try {
+            const authenticationData = { Username: username, Password: password };
+            const authenticationDetails = new AmazonCognitoIdentity.AuthenticationDetails(authenticationData);
+            cognitoUser = new AmazonCognitoIdentity.CognitoUser({
+                Username: username,
+                Pool: userPool
+            });
+
+            cognitoUser.authenticateUser(authenticationDetails, {
+                onSuccess: (session) => {
+                    console.log("登录成功，session：", session);
+                    localStorage.setItem("cognitoIdToken", session.getIdToken().getJwtToken());
+                    loadUserInfo(session);
+                },
+                onFailure: (err) => {
+                    console.error("登录失败：", err);
+                    alert("登录失败：" + err.message);
+                },
+              //  mfaRequired: (codeDeliveryDetails) => {
+              //      const mfaCode = prompt("请输入手机验证码：");
+              //      cognitoUser.sendMFACode(mfaCode, this);
+              //  },
+                newPasswordRequired: (userAttributes, requiredAttrs) => {
+                    requiredAttributes = requiredAttrs;
+                    document.getElementById("auth-area").style.display = "none";
+                    document.getElementById("new-password-area").style.display = "block";
+                    if (!requiredAttributes.includes('email')) {
+                        document.getElementById("required-email").style.display = "none";
+                    }
+                    cognitoUser.attributes = userAttributes;
+                }
+            });
+        } catch (err) {
+            console.error("登录异常：", err);
+            alert("登录失败：" + err.message);
+        }
+    }
+
+    // 提交新密码
+    function submitNewPassword() {
+        const newPassword = document.getElementById("new-password").value.trim();
+        const confirmPassword = document.getElementById("confirm-password").value.trim();
+        const email = document.getElementById("required-email").value.trim();
+
+        if (!newPassword || !confirmPassword || newPassword !== confirmPassword) {
+            alert("密码输入不一致或为空！");
+            return;
+        }
+        if (newPassword.length < 8 || !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/.test(newPassword)) {
+            alert("密码需至少8位，包含大小写字母和数字！");
+            return;
+        }
+
+        const userAttributes = {};
+        if (requiredAttributes.includes('email') && (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+            alert("请输入有效的邮箱！");
+            return;
+        }
+        if (requiredAttributes.includes('email')) userAttributes.email = email;
+
+        try {
+            cognitoUser.completeNewPasswordChallenge(newPassword, userAttributes, {
+                onSuccess: (session) => {
+                    alert("密码设置成功，正在登录...");
+                    document.getElementById("new-password-area").style.display = "none";
+                    localStorage.setItem("cognitoIdToken", session.getIdToken().getJwtToken());
+                    loadUserInfo(session);
+                },
+                onFailure: (err) => {
+                    alert("密码设置失败：" + err.message);
+                }
+            });
+        } catch (err) {
+            alert("密码设置失败：" + err.message);
+        }
+    }
+
+    // 加载用户信息
+    function loadUserInfo(session) {
+        try {
+            const idToken = session.getIdToken();
+            const userInfo = idToken.payload;
+            console.log("用户信息：", userInfo);
+
+            // 显示调试信息
+            const debugEl = document.getElementById("debug");
+            debugEl.classList.remove("hidden");
+            debugEl.innerHTML = `
+                <strong>调试信息：</strong><br>
+                用户名：${userInfo['cognito:username']}<br>
+                角色分组：${JSON.stringify(userInfo['cognito:groups'] || '未设置')}<br>
+                Token有效期：${new Date(idToken.getExpiration() * 1000).toLocaleString()}
+            `;
+
+            // 确定用户角色
+            let userGroup = "student";
+            if (Array.isArray(userInfo['cognito:groups']) && userInfo['cognito:groups'].length > 0) {
+                userGroup = userInfo['cognito:groups'][0];
+            } else {
+                console.warn("未找到用户角色，使用默认角色student");
+                alert("注意：您的账号未分配角色，将使用默认权限（学生）");
+            }
+
+            // 显示用户信息
+            document.getElementById("user-info").innerHTML = `
+                登录用户：${userInfo.name || userInfo['cognito:username']}（${userGroup}）
+                <button onclick="signOut()">退出登录</button>
+            `;
+
+            // 隐藏所有页面，再按需显示
+            document.getElementById("auth-area").classList.add("hidden");
+            const allSections = document.querySelectorAll(".section, #student-page, #teacher-page, #admin-page");
+            allSections.forEach(elem => elem.classList.remove("hidden"));
+            allSections.forEach(elem => elem.classList.add("hidden"));
+
+            // 按角色显示页面
+            switch (userGroup) {
+                case "student":
+                    document.getElementById("student-page").classList.remove("hidden");
+                    fetchStudentGrades();
+                    break;
+                case "teacher":
+                    const teacherPage = document.getElementById("teacher-page");
+                    teacherPage.classList.remove("hidden");
+                    teacherPage.querySelectorAll(".section").forEach(module => {
+                        module.classList.remove("hidden");
+                    });
+                    document.getElementById("teacher-status").textContent = "教师功能加载完成";
+                    break;
+                case "admin":
+                    const adminPage = document.getElementById("admin-page");
+                    adminPage.classList.remove("hidden");
+                    loadAdminPage(); // 加载管理员功能
+                    break;
+                default:
+                    alert(`未知角色：${userGroup}，请联系管理员`);
+                    signOut();
+            }
+        } catch (err) {
+            console.error("加载用户信息失败：", err);
+            alert("登录后加载信息失败：" + err.message);
+            signOut();
+        }
+    }
+
+    // 取消密码重置
+    function cancelNewPassword() {
+        document.getElementById("new-password-area").style.display = "none";
+        document.getElementById("auth-area").style.display = "block";
+        cognitoUser = null;
+        requiredAttributes = [];
+    }
+
+    // 检查登录状态
+    function checkLoginStatus() {
+        const currentUser = userPool.getCurrentUser();
+        if (currentUser) {
+            currentUser.getSession((err, session) => {
+                if (err || !session.isValid()) {
+                    // 强制刷新会话
+                    currentUser.refreshSession(session.refreshToken, (refreshErr, newSession) => {
+                        if (!refreshErr) {
+                            loadUserInfo(newSession);
+                        } else {
+                            console.log("会话无效，需要重新登录");
+                        }
+                    });
+                } else {
+                    loadUserInfo(session);
+                }
+            });
+        }
+    }
+
+    // 退出登录
+    function signOut() {
+        const currentUser = userPool.getCurrentUser();
+        if (currentUser) currentUser.signOut();
+
+        localStorage.removeItem("cognitoIdToken");
+        document.getElementById("user-info").innerHTML = "";
+        document.getElementById("debug").classList.add("hidden");
+        document.querySelectorAll(".section, #student-page, #teacher-page, #admin-page").forEach(elem => {
+            elem.classList.add("hidden");
+        });
+        document.getElementById("auth-area").classList.remove("hidden");
+        document.getElementById("new-password-area").style.display = "none";
+
+        setTimeout(() => window.location.reload(), 1500);
+    }
+
+    // API请求工具函数
+    async function apiRequest(endpoint, method = "GET", data = null) {
+        try {
+            const headers = {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${localStorage.getItem("cognitoIdToken")}`
+            };
+
+            const options = { method, headers };
+            if (data) options.body = JSON.stringify(data);
+
+            const response = await fetch(`${API_BASE_URL}${endpoint}`, options);
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.message || `请求失败（状态码：${response.status}）`);
+            }
+            return result;
+        } catch (err) {
+            console.error("API请求错误：", err);
+            throw err;
+        }
+    }
+
+    // 教师添加成绩
+    async function addSingleGrade() {
+        const studentId = document.getElementById("studentId").value.trim();
+        const course = document.getElementById("course").value.trim();
+        const score = document.getElementById("score").value.trim();
+        const semester = document.getElementById("semester").value.trim();
+        const statusEl = document.getElementById("add-grade-status");
+
+        statusEl.className = "status-message";
+        statusEl.textContent = "";
+
+        if (!studentId || !course || !score || !semester) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "请填写完整信息！";
+            return;
+        }
+        if (isNaN(score) || score < 0 || score > 100) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "分数必须是0-100之间的数字！";
+            return;
+        }
+
+        try {
+            const cleanCourse = course.replace(/[^a-zA-Z0-9]/g, "");
+            const timestamp = new Date().getTime();
+            const gradeId = `${studentId}_${cleanCourse}_${timestamp}`;
+
+            const result = await apiRequest("/grades", "POST", {
+                id: gradeId,
+                studentId: studentId,
+                course: course,
+                score: parseFloat(score),
+                semester: semester,
+                createTime: new Date().toISOString()
+            });
+
+            statusEl.className = "status-message success";
+            statusEl.textContent = `成绩添加成功！gradeId：${gradeId}`;
+
+            document.getElementById("studentId").value = "";
+            document.getElementById("course").value = "";
+            document.getElementById("score").value = "";
+            document.getElementById("semester").value = "";
+
+        } catch (err) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "添加失败：" + err.message;
+        }
+    }
+
+    // 批量上传成绩文件
+    async function uploadGradeFile() {
+        const fileInput = document.getElementById("grade-file");
+        const statusEl = document.getElementById("import-status");
+        const file = fileInput.files[0];
+
+        if (!file) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "请选择要上传的文件！";
+            return;
+        }
+
+        const allowedTypes = ['.xlsx', '.xls', '.csv'];
+        const fileExt = file.name.split('.').pop().toLowerCase();
+        if (!allowedTypes.includes(`.${fileExt}`)) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "仅支持 .xlsx、.xls、.csv 格式！";
+            return;
+        }
+
+        try {
+            statusEl.className = "status-message";
+            statusEl.textContent = "正在解析并导入文件...";
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch(`${API_BASE_URL}/grades/batch`, {
+                method: 'POST',
+                headers: {
+                    "Authorization": `Bearer ${localStorage.getItem("cognitoIdToken")}`
+                },
+                body: formData
+            });
+
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || '导入失败');
+
+            statusEl.className = "status-message success";
+            statusEl.textContent = `导入成功！共处理 ${result.successCount} 条，失败 ${result.failureCount} 条`;
+            fileInput.value = "";
+
+        } catch (err) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "导入失败：" + err.message;
+        }
+    }
+
+    // 设置查询时间段的前端逻辑
+    async function setQueryTime() {
+        const configKey = document.getElementById("configKey").value.trim();
+        const startTime = document.getElementById("queryStartTime").value;
+        const endTime = document.getElementById("queryEndTime").value;
+        const statusEl = document.getElementById("query-time-status");
+
+        if (!startTime || !endTime) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "请选择开始时间和结束时间！";
+            return;
+        }
+
+        try {
+            const result = await apiRequest("/query-time", "POST", {
+                configKey: configKey,
+                queryStartTime: startTime,
+                queryEndTime: endTime
+            });
+            statusEl.className = "status-message success";
+            statusEl.textContent = `设置成功！生效时间：${startTime} 至 ${endTime}`;
+        } catch (err) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "设置失败：" + err.message;
+        }
+    }
+
+    // 加载当前查询时间段
+    async function loadQueryTime() {
+        try {
+            const result = await apiRequest("/query-time", "GET");
+            document.getElementById("queryStartTime").value = result.queryStartTime || "";
+            document.getElementById("queryEndTime").value = result.queryEndTime || "";
+        } catch (err) {
+            console.error("加载查询时间失败：", err);
+        }
+    }
+
+    //教师删改成绩信息
+    async function queryGradesForManagement() {
+        const studentId = document.getElementById("query-studentId").value.trim();
+        const statusEl = document.getElementById("query-grade-status");
+        const listEl = document.getElementById("manage-grade-list");
+
+        statusEl.className = "status-message";
+        statusEl.textContent = "正在查询成绩...";
+
+        try {
+            let params = new URLSearchParams();
+            if (studentId) params.append("studentId", studentId);
+
+            const result = await apiRequest(`/gradesTeacher?${params.toString()}`);
+            const grades = result.grades || [];
+
+            if (grades.length === 0) {
+                listEl.innerHTML = '<tr><td colspan="5" align="center">暂无符合条件的成绩记录</td></tr>';
+                statusEl.textContent = "查询完成，无匹配记录";
+            } else {
+                listEl.innerHTML = grades.map(grade => `
+                <tr>
+                    <td>${grade.studentId}</td>
+                    <td>${grade.course}</td>
+                    <td>${grade.score}</td>
+                    <td>${grade.semester}</td>
+                    <td>
+                    <button onclick="openEditModal('${grade.gradeId}', '${grade.studentId}', '${grade.course}', '${grade.semester}', ${grade.score})">修改</button>
+                    <button class="danger" onclick="openDeleteModal('${grade.gradeId}', '${grade.studentId}', '${grade.course}')">删除</button>
+                    </td>
+                </tr>
+            `).join('');
+                statusEl.textContent = `查询完成，共 ${grades.length} 条记录`;
+            }
+        } catch (err) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "查询失败：" + err.message;
+        }
+    }
+
+    // 打开修改弹窗
+    function openEditModal(gradeId, studentId, course, semester, score) {
+        document.getElementById("edit-grade-id").value = gradeId;
+        document.getElementById("edit-studentId").value = studentId;
+        document.getElementById("edit-course").value = course;
+        document.getElementById("edit-semester").value = semester;
+        document.getElementById("edit-score").value = score;
+        document.getElementById("edit-grade-status").textContent = "";
+        editModal.style.display = "flex";
+    }
+
+    // 关闭修改弹窗
+    function closeEditModal() {
+        editModal.style.display = "none";
+    }
+
+    // 提交修改
+    async function submitEditGrade() {
+        const gradeId = document.getElementById("edit-grade-id").value;
+        const newScore = document.getElementById("edit-score").value.trim();
+        const statusEl = document.getElementById("edit-grade-status");
+
+        if (!newScore || isNaN(newScore) || newScore < 0 || newScore > 100) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "请输入有效的分数（0-100）";
+            return;
+        }
+
+        try {
+            await apiRequest(`/gradesTeacher/${gradeId}`, "PUT", { score: parseInt(newScore) });
+            statusEl.className = "status-message success";
+            statusEl.textContent = "修改成功！";
+            setTimeout(() => {
+                closeEditModal();
+                queryGradesForManagement();
+            }, 1000);
+        } catch (err) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "修改失败：" + err.message;
+        }
+    }
+
+    // 打开删除弹窗
+    function openDeleteModal(gradeId, studentId, course) {
+        document.getElementById("delete-grade-id").value = gradeId;
+        document.getElementById("delete-confirm-text").textContent =
+            `确定要删除 学号${studentId} 的《${course}》成绩吗？此操作不可撤销！`;
+        deleteModal.style.display = "flex";
+    }
+
+    // 关闭删除弹窗
+    function closeDeleteModal() {
+        deleteModal.style.display = "none";
+    }
+
+    // 提交删除
+    async function submitDeleteGrade() {
+        const gradeId = document.getElementById("delete-grade-id").value;
+
+        try {
+            await apiRequest(`/gradesTeacher/${gradeId}`, "DELETE");
+            closeDeleteModal();
+            const statusEl = document.getElementById("query-grade-status");
+            statusEl.className = "status-message success";
+            statusEl.textContent = "删除成功！";
+            queryGradesForManagement();
+        } catch (err) {
+            alert("删除失败：" + err.message);
+        }
+    }
+
+    // 学生查询成绩
+    async function fetchStudentGrades() {
+        const idToken = localStorage.getItem("cognitoIdToken");
+        if (!idToken) {
+            document.getElementById("grade-message").textContent = "未登录，请先登录";
+            return;
+        }
+
+        try {
+            const payload = JSON.parse(atob(idToken.split('.')[1]));
+            const studentId = payload['cognito:username'];
+            if (!studentId) {
+                document.getElementById("grade-message").textContent = "无法获取学生信息";
+                return;
+            }
+
+            const result = await apiRequest(`/grades?studentId=${studentId}`, "GET");
+            const gradeList = document.getElementById("student-grade-list");
+            const messageEl = document.getElementById("grade-message");
+
+            if (result.gradeCount === 0) {
+                messageEl.textContent = "暂无成绩记录";
+                gradeList.innerHTML = "";
+                return;
+            }
+
+            messageEl.textContent = `共 ${result.gradeCount} 条成绩，查询时间区间：${result.queryTimeRange}`;
+            gradeList.innerHTML = result.grades.map(grade => `
+            <tr>
+                <td>${grade.course}</td>
+                <td>${grade.score}</td>
+                <td>${grade.semester}</td>
+                <td>${grade.updateTime || '未更新'}</td>
+            </tr>
+        `).join('');
+        } catch (err) {
+            document.getElementById("grade-message").textContent = err.message || "查询成绩失败";
+        }
+    }
+
+    // 管理员页面专用逻辑
+    function loadAdminPage() {
+        document.getElementById("admin-status").textContent = "管理员功能加载完成";
+        loadUserList(); // 加载用户列表
+    }
+
+    // 显示新增用户的扩展字段（按用户类型）
+    function showAddUserExtendFields() {
+        const userType = document.getElementById('add-user-type').value;
+        document.querySelectorAll('#add-user-section .extend-fields').forEach(el => el.style.display = 'none');
+        if (userType === 'student') {
+            document.getElementById('add-student-extend').style.display = 'block';
+        } else if (userType === 'admin') {
+            document.getElementById('add-admin-extend').style.display = 'block';
+        }
+    }
+
+    // 加载用户列表（按类型筛选）
+    async function loadUserList() {
+        const userType = document.getElementById('filter-user-type').value;
+        const tableBody = document.getElementById('user-list-body');
+        const statusEl = document.getElementById('load-user-status');
+
+        statusEl.className = "status-message";
+        statusEl.textContent = "正在加载用户列表...";
+        tableBody.innerHTML = '<tr><td colspan="6" align="center">加载中...</td></tr>';
+
+        try {
+            const result = await apiRequest(`/admin/users?userType=${userType}`, "GET");
+            const users = result.users || [];
+
+            if (users.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="6" align="center">暂无符合条件的用户</td></tr>';
+                statusEl.textContent = "查询完成，无匹配用户";
+                return;
+            }
+
+            tableBody.innerHTML = users.map(user => `
+                <tr>
+                    <td>${user.userId}</td>
+                    <td>${user.username}</td>
+                    <td>${user.email}</td>
+                    <td>${user.userType === 'student' ? '学生' : user.userType === 'teacher' ? '教师' : '管理员'}</td>
+                    <td>${formatTime(user.createTime)}</td>
+                    <td>
+                        <button onclick="openEditUserModal('${user.userId}', '${user.userType}')">修改</button>
+                        <button class="danger" onclick="openDeleteUserModal('${user.userId}', '${user.userType}')">删除</button>
+                    </td>
+                </tr>
+            `).join('');
+
+            statusEl.textContent = `查询完成，共 ${users.length} 条用户记录`;
+        } catch (err) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "加载用户列表失败：" + err.message;
+            tableBody.innerHTML = `<tr><td colspan="6" align="center" class="error">加载失败：${err.message}</td></tr>`;
+        }
+    }
+
+    // 新增用户
+    async function addUser() {
+        const statusEl = document.getElementById('add-user-status');
+        statusEl.className = "status-message";
+        statusEl.textContent = "";
+
+        const userType = document.getElementById('add-user-type').value;
+        const userId = document.getElementById('add-user-id').value.trim();
+        const username = document.getElementById('add-username').value.trim();
+        const password = document.getElementById('add-password').value.trim();
+        const email = document.getElementById('add-email').value.trim();
+
+        if (!userType || !userId || !username || !password || !email) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "请填写所有必填字段！";
+            return;
+        }
+        if (password.length < 8 || !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/.test(password)) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "密码需至少8位，包含大小写字母和数字！";
+            return;
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "请输入有效的邮箱地址！";
+            return;
+        }
+
+        const userData = {
+            userId,
+            username,
+            password,
+            email,
+            userType
+        };
+
+        if (userType === 'student') {
+            userData.grade = document.getElementById('add-grade').value.trim();
+        } else if (userType === 'teacher') {
+            userData.subject = document.getElementById('add-subject').value.trim();
+        } else if (userType === 'admin') {
+            userData.permission = document.getElementById('add-permission').value;
+        }
+
+        try {
+            const result = await apiRequest("/admin/users", "POST", userData);
+
+            statusEl.className = "status-message success";
+            statusEl.textContent = result.message || `${userType}用户创建成功！`;
+
+            document.querySelectorAll('#add-user-section .extend-fields').forEach(el => el.style.display = 'none');
+            document.getElementById('add-user-type').value = "";
+            document.getElementById('add-user-id').value = "";
+            document.getElementById('add-username').value = "";
+            document.getElementById('add-password').value = "";
+            document.getElementById('add-email').value = "";
+
+            loadUserList();
+        } catch (err) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "创建用户失败：" + err.message;
+        }
+    }
+
+    // 打开修改用户弹窗
+    async function openEditUserModal(userId, userType) {
+        const statusEl = document.getElementById('edit-user-status');
+        statusEl.className = "status-message";
+        statusEl.textContent = "";
+
+        try {
+            const result = await apiRequest(`/admin/users/${userId}?userType=${userType}`, "GET");
+            const user = result.user;
+
+            document.getElementById('edit-user-id').value = user.userId;
+            document.getElementById('edit-user-type').value = user.userType;
+            document.getElementById('edit-username').value = user.username;
+            document.getElementById('edit-email').value = user.email;
+            document.getElementById('edit-password').value = "";
+
+            document.querySelectorAll('#edit-user-modal .extend-fields').forEach(el => el.style.display = 'none');
+            if (userType === 'student') {
+                document.getElementById('edit-student-extend').style.display = 'block';
+                document.getElementById('edit-grade').value = user.grade || '';
+            } else if (userType === 'teacher') {
+                document.getElementById('edit-teacher-extend').style.display = 'block';
+                document.getElementById('edit-subject').value = user.subject || '';
+            } else if (userType === 'admin') {
+                document.getElementById('edit-admin-extend').style.display = 'block';
+                document.getElementById('edit-permission').value = user.permission || 'full';
+            }
+
+            editUserModal.style.display = "flex";
+        } catch (err) {
+            alert("加载用户信息失败：" + err.message);
+        }
+    }
+
+    // 关闭修改用户弹窗
+    function closeEditUserModal() {
+        editUserModal.style.display = "none";
+    }
+
+    // 提交修改用户信息
+    async function submitEditUser() {
+        const statusEl = document.getElementById('edit-user-status');
+        statusEl.className = "status-message";
+        statusEl.textContent = "";
+
+        const userId = document.getElementById('edit-user-id').value;
+        const userType = document.getElementById('edit-user-type').value;
+        const username = document.getElementById('edit-username').value.trim();
+        const email = document.getElementById('edit-email').value.trim();
+        const password = document.getElementById('edit-password').value.trim();
+
+        if (!username || !email) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "用户名和邮箱不能为空！";
+            return;
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "请输入有效的邮箱地址！";
+            return;
+        }
+        if (password && (password.length < 8 || !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/.test(password))) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "密码需至少8位，包含大小写字母和数字！";
+            return;
+        }
+
+        const updateData = {
+            userId,
+            userType,
+            username,
+            email
+        };
+        if (password) updateData.password = password;
+
+        if (userType === 'student') {
+            updateData.grade = document.getElementById('edit-grade').value.trim();
+        } else if (userType === 'teacher') {
+            updateData.subject = document.getElementById('edit-subject').value.trim();
+        } else if (userType === 'admin') {
+            updateData.permission = document.getElementById('edit-permission').value;
+        }
+
+        try {
+            const result = await apiRequest("/admin/users", "PUT", updateData);
+
+            statusEl.className = "status-message success";
+            statusEl.textContent = result.message || `${userType === 'student' ? '学生' : userType === 'teacher' ? '教师' : '管理员'}用户更新成功！`;
+
+            setTimeout(() => {
+                closeEditUserModal();
+                loadUserList();
+            }, 1000);
+        } catch (err) {
+            statusEl.className = "status-message error";
+            statusEl.textContent = "更新用户失败：" + err.message;
+        }
+    }
+
+    // 打开删除用户弹窗
+    function openDeleteUserModal(userId, userType) {
+        document.getElementById('delete-user-id').value = userId;
+        document.getElementById('delete-user-type').value = userType;
+
+        const userTypeText = userType === 'student' ? '学生' : userType === 'teacher' ? '教师' : '管理员';
+        document.getElementById('delete-user-text').textContent =
+            `确定要删除 ${userTypeText} 用户（ID：${userId}）吗？此操作将同步删除Cognito账号及关联数据，不可撤销！`;
+
+        deleteUserModal.style.display = "flex";
+    }
+
+    // 关闭删除用户弹窗
+    function closeDeleteUserModal() {
+        deleteUserModal.style.display = "none";
+    }
+
+    // 提交删除用户
+    async function submitDeleteUser() {
+        const userId = document.getElementById('delete-user-id').value;
+        const userType = document.getElementById('delete-user-type').value;
+
+        try {
+            const result = await apiRequest(`/admin/users?userId=${userId}&userType=${userType}`, "DELETE");
+
+            closeDeleteUserModal();
+            const statusEl = document.getElementById('load-user-status');
+            statusEl.className = "status-message success";
+            statusEl.textContent = result.message || `${userType === 'student' ? '学生' : userType === 'teacher' ? '教师' : '管理员'}用户删除成功！`;
+            loadUserList();
+        } catch (err) {
+            alert("删除用户失败：" + err.message);
+        }
+    }
+
+    // 时间格式化工具
+    function formatTime(isoTime) {
+        if (!isoTime) return '无记录';
+        const date = new Date(isoTime);
+        return date.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
+    }
+</script>
+</body>
+</html>
